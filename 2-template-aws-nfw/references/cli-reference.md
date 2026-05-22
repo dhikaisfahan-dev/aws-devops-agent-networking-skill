@@ -652,6 +652,12 @@ VPC Peering:         CreateVpcPeeringConnection, DeleteVpcPeeringConnection,
 VPN:                 CreateVpnConnection, DeleteVpnConnection
 NAT Gateway:         CreateNatGateway, DeleteNatGateway
 VPC Endpoints:       CreateVpcEndpoint, DeleteVpcEndpoints, ModifyVpcEndpoint
+NACLs:               CreateNetworkAclEntry, DeleteNetworkAclEntry,
+                     ReplaceNetworkAclEntry, ReplaceNetworkAclAssociation
+ALB/NLB/GWLB:       CreateLoadBalancer, DeleteLoadBalancer, ModifyLoadBalancerAttributes,
+                     RegisterTargets, DeregisterTargets, CreateTargetGroup,
+                     DeleteTargetGroup, ModifyTargetGroupAttributes,
+                     CreateListener, DeleteListener, ModifyListener
 ```
 
 ---
