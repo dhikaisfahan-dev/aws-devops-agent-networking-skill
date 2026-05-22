@@ -63,6 +63,8 @@ zip -r my-skill.zip .
 
 ## Limitations
 
-- Agent CANNOT query firewall appliance rules (Fortinet/Palo Alto management is outside AWS API)
-- Agent CAN check: GWLB health, routing, EC2 appliance status, VPC Flow Logs, TGW Flow Logs
-- If traffic reaches the appliance but doesn't pass → escalate to firewall team
+- Agent CAN query Fortinet firewall rules, logs, and device status via MCP servers (FortiGate, FortiManager, FortiAnalyzer)
+- Agent CANNOT query non-Fortinet appliances (Palo Alto, Cisco, Check Point) — no MCP server available yet
+- Agent CAN check: GWLB health, routing, EC2 appliance status, VPC Flow Logs, TGW Flow Logs (via AWS API)
+- Agent CANNOT modify firewall rules — always recommends and escalates to firewall team
+- If traffic reaches a non-Fortinet appliance but doesn't pass → escalate to firewall team
