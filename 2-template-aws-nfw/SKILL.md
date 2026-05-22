@@ -31,6 +31,48 @@ The agent should discover actual VPC CIDRs, resource IDs, and log group names dy
 
 ---
 
+## Skill Capabilities
+
+This skill covers the following networking investigation scenarios. Each has a dedicated runbook with step-by-step procedures:
+
+| # | Scenario | Runbook |
+|---|----------|---------|
+| 1 | East-West connectivity (VPC-to-VPC via TGW + Firewall) | east-west-connectivity.md |
+| 2 | Internet egress (workload → internet via NAT GW) | internet-egress.md |
+| 3 | Internet ingress (internet → workload via ALB/NLB) | internet-ingress.md |
+| 4 | AWS service access (VPC Endpoints — Gateway & Interface) | aws-service-access.md |
+| 5 | VPC Interface Endpoints / PrivateLink troubleshooting | privatelink-troubleshooting.md |
+| 6 | VPC Peering connectivity | vpc-peering.md |
+| 7 | Hybrid connectivity (VPN + Direct Connect + DX Gateway) | hybrid-connectivity.md |
+| 8 | Network Firewall investigation (rules, logging, drops) | firewall-investigation.md |
+| 9 | DNS troubleshooting (Route 53 Resolver, forwarding rules) | dns-troubleshooting.md |
+| 10 | DNS Firewall (Route 53 Resolver DNS Firewall rules) | dns-firewall.md |
+| 11 | Route 53 Private Hosted Zone sharing (cross-account/VPC) | route53-phz-sharing.md |
+| 12 | ALB / NLB troubleshooting (health checks, 5xx, targets) | alb-nlb-troubleshooting.md |
+| 13 | EKS / ECS networking (pod networking, service discovery) | eks-ecs-networking.md |
+| 14 | MTU / Path MTU Discovery issues (VPN/DX 1500 vs VPC 9001) | mtu-pmtud-issues.md |
+| 15 | NACLs troubleshooting (stateless rules, ephemeral ports) | nacl-troubleshooting.md |
+| 16 | IPv6 / Dual-stack troubleshooting | ipv6-dual-stack.md |
+| 17 | Lambda VPC networking (ENI, cold start, subnet exhaustion) | lambda-vpc-networking.md |
+| 18 | AWS Cloud WAN troubleshooting (segments, policies, peering) | cloud-wan-troubleshooting.md |
+| 19 | Global Accelerator troubleshooting | global-accelerator.md |
+| 20 | Throttling & Quotas (NAT GW ports, TGW bandwidth, limits) | throttling-quotas.md |
+| 21 | Timeout & Keepalive issues (idle drops, TCP keepalive) | timeout-keepalive-issues.md |
+| 22 | Multi-account networking (RAM sharing, cross-account TGW) | multi-account-networking.md |
+
+### Additional Built-in Capabilities (no separate runbook needed)
+
+- **AWS Reachability Analyzer** — Automated path analysis tool; use `aws ec2 create-network-insights-path` + `aws ec2 start-network-insights-analysis` to shortcut manual hop-by-hop tracing
+- **CloudTrail change correlation** — Check recent changes to Security Groups, Route Tables, NACLs, Firewall rules, ALB/NLB, TGW routes that may have caused the issue
+- **CloudWatch network metrics** — NAT GW, TGW, Network Firewall, VPN, ALB/NLB, DX metrics for anomaly detection
+- **VPC Flow Logs + TGW Flow Logs + Network Firewall Logs** — Multi-source log correlation
+- **Security Group & NACL change detection** — Via CloudTrail (AuthorizeSecurityGroupIngress/Egress, RevokeSecurityGroupIngress/Egress, CreateNetworkAclEntry, ReplaceNetworkAclEntry)
+- **Architecture pattern detection** — Automatically identifies Combined, Separate Egress, or Shared Services VPC patterns
+- **SD-WAN + TGW Connect** — GRE/BGP troubleshooting for any SD-WAN brand
+- **Direct Connect Gateway** — Physical layer, BGP, allowed prefixes, VIF metrics
+
+---
+
 ## Environment Discovery (Always Run First)
 
 Before investigating any issue, discover the environment topology:
