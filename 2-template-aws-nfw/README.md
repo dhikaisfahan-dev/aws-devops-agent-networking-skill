@@ -32,12 +32,12 @@ cd my-skill/ && zip -r my-skill.zip SKILL.md KNOWN-EXCEPTIONS.md references/
 |------|---------|
 | `SKILL.md` | Investigation methodology, path tracing, log correlation, DX Gateway, SD-WAN, common root causes |
 | `KNOWN-EXCEPTIONS.md` | Template for environment-specific exceptions (optional, fill in per environment) |
-| `references/runbooks/` | 16 operational runbooks |
+| `references/runbooks/` | 22 operational runbooks |
 | `references/troubleshooting-guide.md` | Decision trees, VPC/TGW/Firewall/CloudTrail/CloudWatch log queries |
 | `references/best-practices.md` | Design principles for SG, RT, TGW, Firewall, Endpoints |
 | `references/cli-reference.md` | AWS CLI commands (19 sections) |
 
-## Runbooks (16)
+## Runbooks (22)
 
 | Runbook | Scenario |
 |---------|----------|
@@ -57,6 +57,12 @@ cd my-skill/ && zip -r my-skill.zip SKILL.md KNOWN-EXCEPTIONS.md references/
 | lambda-vpc-networking | Lambda VPC attachment, ENI, NAT GW requirement |
 | nacl-troubleshooting | Network ACLs, stateless rules, ephemeral ports |
 | cloud-wan-troubleshooting | AWS Cloud WAN segments, policies, service insertion |
+| ipv6-dual-stack | IPv6 routing, EIGW, SG/NACL for IPv6, TGW IPv6 |
+| dns-firewall | Route 53 DNS Firewall, domain blocking/allowing |
+| throttling-quotas | NAT GW limits, TGW bandwidth, endpoint throughput |
+| timeout-keepalive-issues | Idle timeouts, TCP keepalive, ALB/NAT/FW timeouts |
+| multi-account-networking | RAM sharing, cross-account TGW/endpoints/PHZ |
+| global-accelerator | GA health checks, endpoint routing, failover |
 
 ## Architecture Requirements
 
