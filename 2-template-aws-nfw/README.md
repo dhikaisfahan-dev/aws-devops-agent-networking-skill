@@ -1,60 +1,62 @@
-# Reusable Networking Skill Template
+# Reusable Networking Skill Template (AWS Network Firewall)
 
 **Status:** ✅ Ready to deploy
 **Last Updated:** May 2026
 **Zip:** `deploy/skill-template-aws-nfw.zip` (58KB)
 **For:** Environments using AWS Network Firewall with hub-and-spoke TGW architecture
 
-This is a generic version of the networking skill that can be uploaded to any AWS DevOps Agent Space without modification.
+This skill can be uploaded to any AWS DevOps Agent Space without modification. The agent discovers the environment dynamically.
 
 ## How to Use
 
-### 1. Copy this folder
+### 1. Upload directly (no changes needed)
+
 ```bash
-cp -r skill-template/ my-environment-skill/
+# The zip is ready — just upload it
+# DevOps Agent → Skills → Add skill → Upload skill → select deploy/skill-template-aws-nfw.zip
 ```
 
-### 2. Update SKILL.md (Optional)
+### 2. Or customize first (optional)
 
-The template SKILL.md is **environment-agnostic** — no CIDRs or resource IDs to update. The DevOps Agent discovers all VPC CIDRs, log groups, and resource IDs dynamically via AWS API calls.
-
-Only update if your architecture differs from the standard pattern (e.g., no Network Firewall, using Cloud WAN instead of TGW, etc.).
-
-### 3. Copy runbooks (no changes needed)
 ```bash
-cp -r ../runbooks/ my-environment-skill/references/runbooks/
+# Copy folder, add environment-specific files, re-zip
+cp -r 2-template-aws-nfw/ my-skill/
+# Add KNOWN-EXCEPTIONS.md entries if needed
+# Add architecture diagrams if desired
+cd my-skill/ && zip -r my-skill.zip SKILL.md KNOWN-EXCEPTIONS.md references/
 ```
 
-### 4. Optionally add environment-specific references
-
-Add any of these to `references/`:
-- Architecture diagrams specific to your environment
-- Firewall rule documentation
-- VPC endpoint list
-- Team escalation contacts
-
-### 5. Package as zip
-```bash
-cd my-environment-skill/
-zip -r my-environment-skill.zip .
-```
-
-### 6. Upload to DevOps Agent
-Skills → Add skill → Upload skill → select the zip
-
-## What's Included (Generic, No Changes Needed)
+## What's Included
 
 | File | Content |
 |------|---------|
-| `SKILL.md` | Investigation methodology, path tracing, log correlation, common root causes |
-| `references/runbooks/` | 7 operational runbooks (east-west, egress, ingress, AWS services, hybrid, firewall, VPC peering) |
-| `references/troubleshooting-guide.md` | Decision trees, VPC/TGW/Firewall log queries |
-| `references/best-practices.md` | Design principles |
-| `references/cli-reference.md` | AWS CLI commands (16 sections including VPC Peering, TGW Flow Logs) |
+| `SKILL.md` | Investigation methodology, path tracing, log correlation, DX Gateway, SD-WAN, common root causes |
+| `KNOWN-EXCEPTIONS.md` | Template for environment-specific exceptions (optional, fill in per environment) |
+| `references/runbooks/` | 13 operational runbooks |
+| `references/troubleshooting-guide.md` | Decision trees, VPC/TGW/Firewall/CloudTrail/CloudWatch log queries |
+| `references/best-practices.md` | Design principles for SG, RT, TGW, Firewall, Endpoints |
+| `references/cli-reference.md` | AWS CLI commands (18 sections) |
+
+## Runbooks (13)
+
+| Runbook | Scenario |
+|---------|----------|
+| east-west-connectivity | Inter-VPC via TGW + Firewall |
+| internet-egress | Outbound internet via NAT GW |
+| internet-ingress | Inbound via ALB/NLB |
+| aws-service-access | VPC endpoints (S3, SQS, etc.) |
+| hybrid-connectivity | Direct Connect + VPN |
+| firewall-investigation | AWS Network Firewall deep-dive |
+| vpc-peering | VPC Peering troubleshooting |
+| dns-troubleshooting | Route 53 Resolver, private hosted zones |
+| alb-nlb-troubleshooting | Cross-zone, cross-VPC targets, health checks |
+| eks-ecs-networking | Pod-level, ENI exhaustion |
+| mtu-pmtud-issues | MTU / Path MTU Discovery |
+| privatelink-troubleshooting | Cross-account VPC endpoints |
+| route53-phz-sharing | Private Hosted Zone sharing across accounts |
 
 ## Architecture Requirements
 
-This skill assumes:
 - ✅ Hub-and-spoke with Transit Gateway
 - ✅ Centralized inspection VPC with AWS Network Firewall
 - ✅ NAT Gateway for internet egress
@@ -62,5 +64,6 @@ This skill assumes:
 - ✅ Appliance Mode enabled on inspection VPC TGW attachment
 - ✅ Two TGW route tables (Spoke + Firewall)
 - ✅ Security Groups only (no NACLs)
+- ✅ Optional: Direct Connect Gateway, SD-WAN/TGW Connect, VPC Peering
 
-If your architecture differs (e.g., Cloud WAN, third-party firewall, NACLs), you'll need to modify the investigation methodology in SKILL.md.
+If your architecture uses 3rd party firewalls (Fortinet/Palo Alto) + GWLB instead of AWS Network Firewall, use the `3-template-3rdparty-fw/` template instead.
