@@ -73,6 +73,76 @@ Before investigating any issue, discover the environment topology:
 
 ---
 
+## Architecture Pattern Detection
+
+Before investigating, determine which VPC pattern the environment uses:
+
+```
+1. Find Inspection VPC:
+   → call_aws: aws ec2 describe-vpc-endpoints --filters "Name=vpc-endpoint-type,Values=GatewayLoadBalancer"
+   → The VPC containing GWLB endpoints is the Inspection VPC
+
+2. Find Egress VPC:
+   → call_aws: aws ec2 describe-nat-gateways
+   → call_aws: aws ec2 describe-internet-gateways
+   → The VPC with NAT GW + IGW is the Egress VPC
+
+3. Find Shared Services VPC:
+   → call_aws: aws ec2 describe-vpc-endpoints (look for many interface endpoints)
+   → call_aws: aws route53resolver list-resolver-endpoints
+   → The VPC with centralized endpoints + DNS resolvers is Shared Services
+
+4. Determine pattern:
+   IF GWLB + NAT + IGW all in SAME VPC → Combined (simplest)
+   IF GWLB in one VPC, NAT+IGW in another → Separate Inspection + Egress
+   IF Endpoints/DNS in a third VPC → Shared Services VPC exists
+```
+
+### Traffic Paths by Pattern
+
+**Pattern A: Combined Inspection + Egress (single VPC)**
+```
+Workload → TGW → Inspection VPC (GWLB → Firewall → NAT GW → IGW) → Internet
+```
+
+**Pattern B: Separate Inspection + Egress VPCs**
+```
+Workload → TGW (Spoke RT → Inspection VPC)
+→ Inspection VPC (GWLB → Firewall Appliance → GWLB)
+→ TGW (Firewall RT → Egress VPC)
+→ Egress VPC (NAT GW → IGW) → Internet
+```
+
+**Pattern C: Separate Inspection + Egress + Shared Services**
+```
+Internet traffic:
+  Workload → TGW → Inspection VPC (GWLB+FW) → TGW → Egress VPC → Internet
+
+AWS service traffic:
+  Workload → TGW → Shared Services VPC → VPC Endpoints → AWS Services
+
+DNS:
+  Workload → TGW → Shared Services VPC → Route 53 Resolver
+```
+
+### Troubleshooting Separate VPC Patterns
+
+**Extra failure points in Pattern B/C:**
+- Additional TGW route table entries (Firewall RT → Egress VPC)
+- Egress VPC needs TGW attachment + correct RT association
+- Return traffic must go back through Inspection VPC (symmetric)
+- Shared Services VPC needs TGW attachment + routes
+
+**Common issues:**
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| Firewall RT missing Egress VPC route | Inspected but can't reach internet | Add Egress CIDR → Egress attachment in Firewall RT |
+| Egress VPC missing return route | One-way internet | Add 10.0.0.0/8 → TGW in Egress NAT subnet RT |
+| Shared Services not in TGW | Can't reach endpoints | Attach Shared VPC to TGW |
+| Asymmetric return from Egress | Intermittent failures | Return must go through Inspection (stateful) |
+
+---
+
 ## Available MCP Tools
 
 ### AWS API MCP (Infrastructure Layer)

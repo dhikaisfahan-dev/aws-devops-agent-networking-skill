@@ -66,6 +66,99 @@ Before investigating any issue, discover the environment topology:
 
 ---
 
+## Architecture Pattern Detection
+
+Before investigating, determine which VPC pattern the environment uses:
+
+```
+1. Find Inspection VPC:
+   → aws network-firewall list-firewalls (AWS NFW)
+   → The VPC containing the firewall is the Inspection VPC
+
+2. Find Egress VPC:
+   → aws ec2 describe-nat-gateways
+   → aws ec2 describe-internet-gateways
+   → The VPC with NAT GW + IGW is the Egress VPC
+
+3. Find Shared Services VPC:
+   → aws ec2 describe-vpc-endpoints (look for many interface endpoints)
+   → aws route53resolver list-resolver-endpoints
+   → The VPC with centralized endpoints + DNS resolvers is Shared Services
+
+4. Determine pattern:
+   IF Firewall + NAT + IGW all in SAME VPC → Combined (simplest)
+   IF Firewall in one VPC, NAT+IGW in another → Separate Inspection + Egress
+   IF Endpoints/DNS in a third VPC → Shared Services VPC exists
+```
+
+### Traffic Paths by Pattern
+
+**Pattern A: Combined Inspection + Egress (single VPC)**
+```
+Workload → TGW → Inspection VPC (Firewall → NAT GW → IGW) → Internet
+Workload → TGW → Inspection VPC (Firewall → VPC Endpoints) → AWS Services
+```
+
+**Pattern B: Separate Inspection + Egress VPCs**
+```
+Workload → TGW (Spoke RT → Inspection VPC)
+→ Inspection VPC (Firewall inspects)
+→ TGW (Firewall RT → Egress VPC)
+→ Egress VPC (NAT GW → IGW) → Internet
+
+Return: Internet → IGW → NAT GW → Egress VPC RT (→ TGW)
+→ TGW → Inspection VPC (Firewall, return path)
+→ TGW → Workload VPC
+```
+
+**Pattern C: Separate Inspection + Egress + Shared Services**
+```
+Internet traffic:
+  Workload → TGW → Inspection VPC → TGW → Egress VPC → Internet
+
+AWS service traffic:
+  Workload → TGW → Shared Services VPC → VPC Endpoints → AWS Services
+  (may or may not pass through Inspection VPC depending on routing)
+
+DNS:
+  Workload → TGW → Shared Services VPC → Route 53 Resolver → resolve
+```
+
+### Troubleshooting Separate VPC Patterns
+
+**Extra failure points in Pattern B/C:**
+- Additional TGW route table entries needed (Firewall RT must route to Egress VPC)
+- Egress VPC needs its own TGW attachment + route table association
+- Return traffic from Egress VPC must go back through Inspection VPC (symmetric)
+- Shared Services VPC needs TGW attachment + routes from workload VPCs
+
+**Common issues with separate VPCs:**
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| Firewall RT missing route to Egress VPC | Traffic inspected but can't reach internet | Add Egress VPC CIDR → Egress attachment in Firewall RT |
+| Egress VPC RT missing return route | Internet works one-way | Add 10.0.0.0/8 → TGW in Egress VPC NAT subnet RT |
+| Shared Services not in TGW | Can't reach VPC endpoints | Attach Shared VPC to TGW, add routes |
+| Spoke RT sends AWS traffic to Inspection instead of Shared | Slow endpoint access | Add specific routes for Shared VPC CIDR in Spoke RT |
+| Asymmetric return from Egress VPC | Intermittent failures | Ensure Egress VPC return goes through Inspection (firewall stateful) |
+
+**How to check TGW routing for multi-VPC patterns:**
+```
+→ aws ec2 search-transit-gateway-routes --transit-gateway-route-table-id <firewall-rt>
+  Look for:
+  - Egress VPC CIDR → Egress VPC attachment (for internet-bound traffic after inspection)
+  - Shared VPC CIDR → Shared VPC attachment (for endpoint access)
+  - Workload CIDRs → Workload VPC attachments (for return traffic)
+
+→ aws ec2 get-transit-gateway-route-table-associations
+  Verify:
+  - Inspection VPC → associated with Firewall RT
+  - Egress VPC → associated with Firewall RT (or its own RT)
+  - Shared VPC → associated with Spoke RT or its own RT
+  - Workload VPCs → associated with Spoke RT
+```
+
+---
+
 ## Investigation Methodology
 
 ### Step 1: Identify Traffic Flow Type
