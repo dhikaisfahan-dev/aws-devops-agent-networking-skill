@@ -22,7 +22,7 @@
 
 ```bash
 aws network-firewall describe-firewall \
-  --firewall-name maybank-inspection-fw \
+  --firewall-name <your-firewall-name> \
   --query '{
     Status: FirewallStatus.Status,
     ConfigSync: FirewallStatus.ConfigurationSyncStateSummary,
@@ -41,7 +41,7 @@ aws network-firewall describe-firewall \
 
 ```bash
 aws network-firewall describe-firewall \
-  --firewall-name maybank-inspection-fw \
+  --firewall-name <your-firewall-name> \
   --query 'FirewallStatus.SyncStates' \
   --output json
 ```
@@ -49,7 +49,7 @@ aws network-firewall describe-firewall \
 Output shows endpoint IDs per AZ:
 ```json
 {
-  "ap-southeast-1a": {
+  "<your-availability-zone>": {
     "Attachment": {
       "SubnetId": "subnet-fw-az-a",
       "EndpointId": "vpce-fw-az-a-xxxxx",
@@ -70,7 +70,7 @@ Output shows endpoint IDs per AZ:
 
 ```bash
 aws network-firewall describe-firewall-policy \
-  --firewall-policy-name maybank-policy \
+  --firewall-policy-name <your-policy-name> \
   --query '{
     StatelessDefaultActions: FirewallPolicy.StatelessDefaultActions,
     StatelessFragmentDefaultActions: FirewallPolicy.StatelessFragmentDefaultActions,
@@ -143,7 +143,7 @@ Priority 99: Forward all remaining → aws:forward_to_sfe (stateful engine)
 ```bash
 # List all stateful rule groups
 aws network-firewall describe-firewall-policy \
-  --firewall-policy-name maybank-policy \
+  --firewall-policy-name <your-policy-name> \
   --query 'FirewallPolicy.StatefulRuleGroupReferences[].{Priority:Priority,ARN:ResourceArn}'
 
 # Check each rule group
@@ -201,7 +201,7 @@ Domain list rules:
 ```bash
 # Check if using STRICT_ORDER or DEFAULT_ACTION_ORDER
 aws network-firewall describe-firewall-policy \
-  --firewall-policy-name maybank-policy \
+  --firewall-policy-name <your-policy-name> \
   --query 'FirewallPolicy.StatefulEngineOptions.RuleOrder'
 ```
 
@@ -234,7 +234,7 @@ pass tcp 10.1.0.0/16 any -> 10.2.0.0/16 8080 (msg:"Allow WL2 to WL3 port 8080"; 
 ```bash
 # Check sync status after rule change
 aws network-firewall describe-firewall \
-  --firewall-name maybank-inspection-fw \
+  --firewall-name <your-firewall-name> \
   --query 'FirewallStatus.ConfigurationSyncStateSummary'
 
 # Wait until IN_SYNC (may take 30-60 seconds)
@@ -251,7 +251,7 @@ aws network-firewall describe-firewall \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/NetworkFirewall \
   --metric-name DroppedPackets \
-  --dimensions Name=FirewallName,Value=maybank-inspection-fw Name=AvailabilityZone,Value=ap-southeast-1a \
+  --dimensions Name=FirewallName,Value=<your-firewall-name> Name=AvailabilityZone,Value=<your-availability-zone> \
   --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 --statistics Sum
@@ -260,7 +260,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/NetworkFirewall \
   --metric-name PassedPackets \
-  --dimensions Name=FirewallName,Value=maybank-inspection-fw \
+  --dimensions Name=FirewallName,Value=<your-firewall-name> \
   --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 --statistics Sum
@@ -269,7 +269,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/NetworkFirewall \
   --metric-name ReceivedPackets \
-  --dimensions Name=FirewallName,Value=maybank-inspection-fw \
+  --dimensions Name=FirewallName,Value=<your-firewall-name> \
   --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 --statistics Sum
@@ -283,7 +283,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/NetworkFirewall \
   --metric-name StreamExceptionPolicyPackets \
-  --dimensions Name=FirewallName,Value=maybank-inspection-fw \
+  --dimensions Name=FirewallName,Value=<your-firewall-name> \
   --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 --statistics Sum

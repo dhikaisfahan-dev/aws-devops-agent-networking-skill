@@ -132,7 +132,7 @@ aws ec2 describe-route-tables \
 ```bash
 # Check firewall status
 aws network-firewall describe-firewall \
-  --firewall-name maybank-inspection-fw \
+  --firewall-name <your-firewall-name> \
   --query 'FirewallStatus.{Status:Status,SyncStates:SyncStates}'
 
 # Check alert logs for this traffic

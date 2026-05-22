@@ -56,6 +56,12 @@ That's it. The agent is now a network investigation specialist.
 | CloudTrail (who changed what) | ✅ |
 | CloudWatch network metrics | ✅ |
 | VPC / TGW / Firewall Flow Logs | ✅ |
+| IPv6 dual-stack | ✅ |
+| Route 53 DNS Firewall | ✅ |
+| Throttling & service quotas (NAT GW, TGW, endpoints) | ✅ |
+| Timeout & keepalive issues (ALB, NAT, TCP) | ✅ |
+| Multi-account networking (RAM sharing) | ✅ |
+| Global Accelerator | ✅ |
 
 ## 3rd Party Firewall: Fortinet MCP Integration
 

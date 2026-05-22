@@ -497,7 +497,7 @@ aws logs filter-log-events \
 ```bash
 # Query TGW flow logs for specific source
 aws logs start-query \
-  --log-group-name /tgw/flow-logs/maybank-lab \
+  --log-group-name /tgw/flow-logs/<your-tgw-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, dstPort, flowDirection, tgwSrcVpc, tgwDstVpc, tgwAttachmentId, action
@@ -507,7 +507,7 @@ aws logs start-query \
 
 # Find rejected/dropped traffic at TGW level
 aws logs start-query \
-  --log-group-name /tgw/flow-logs/maybank-lab \
+  --log-group-name /tgw/flow-logs/<your-tgw-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, dstPort, tgwAttachmentId, action
@@ -517,7 +517,7 @@ aws logs start-query \
 
 # Traffic between specific VPCs
 aws logs start-query \
-  --log-group-name /tgw/flow-logs/maybank-lab \
+  --log-group-name /tgw/flow-logs/<your-tgw-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, dstPort, flowDirection, action
