@@ -116,19 +116,22 @@ aws ec2 search-transit-gateway-routes \
   --filters "Name=route-search.exact-match,Values=10.0.0.0/16"
 ```
 
-### Step 7: Check Network Firewall (Ingress Rules)
+### Step 7: Check Firewall (GWLB + 3rd Party Appliance)
 
 ```bash
-# Check for blocked inbound traffic
-aws logs filter-log-events \
-  --log-group-name /aws/network-firewall/alert \
-  --filter-pattern '{ $.event.dest_ip = "BACKEND_IP" }' \
-  --start-time $(date -u -v-30M +%s000)
+# Check GWLB target health
+aws elbv2 describe-target-health \
+  --target-group-arn <gwlb-target-group-arn> \
+  --query 'TargetHealthDescriptions[].{Target:Target.Id,Health:TargetHealth.State}'
 
-# Check ingress rule group
-aws network-firewall describe-rule-group \
-  --rule-group-name ingress-rules \
-  --type STATEFUL
+# If FortiAnalyzer MCP available — check if inbound traffic was blocked:
+# → FortiAnalyzer MCP: search_traffic_logs
+#   Filter: dstip=BACKEND_IP
+#   Look for: action=deny → firewall blocking inbound
+
+# If no MCP — escalate to firewall team:
+# "Inbound traffic from ALB reaches GWLB but doesn't arrive at backend.
+#  Please check ingress firewall rules for traffic to BACKEND_IP."
 ```
 
 ### Step 8: Check TGW Firewall Route Table (→ Workload VPC)

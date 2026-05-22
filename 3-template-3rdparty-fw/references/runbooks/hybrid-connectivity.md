@@ -141,19 +141,26 @@ Firewall → TGW (Firewall RT: 192.168.0.0/16 → DX/VPN attachment) →
 On-Premises
 ```
 
-### Step 6: Check Network Firewall Rules
+### Step 6: Check Firewall Rules (GWLB + 3rd Party)
 
 ```bash
-# Check if firewall allows on-premises traffic
-aws logs filter-log-events \
-  --log-group-name /aws/network-firewall/alert \
-  --filter-pattern '{ ($.event.src_ip = "10.0.*" && $.event.dest_ip = "192.168.*") || ($.event.src_ip = "192.168.*" && $.event.dest_ip = "10.0.*") }' \
-  --start-time $(date -u -v-1H +%s000)
+# Check GWLB target health
+aws elbv2 describe-target-health \
+  --target-group-arn <gwlb-target-group-arn> \
+  --query 'TargetHealthDescriptions[].{Target:Target.Id,Health:TargetHealth.State}'
 
-# Check on-premises rule group
-aws network-firewall describe-rule-group \
-  --rule-group-name onprem-rules \
-  --type STATEFUL
+# If FortiAnalyzer MCP available — check on-prem traffic:
+# → FortiAnalyzer MCP: search_traffic_logs
+#   Filter: srcip=192.168.* dstip=10.0.*
+#   Look for: action=deny → firewall blocking on-prem traffic
+
+# If FortiGate MCP available — check policies:
+# → FortiGate MCP: list_firewall_policies
+#   Look for policies with srcaddr=on-prem and action=deny
+
+# If no MCP — escalate to firewall team:
+# "On-prem traffic reaches GWLB but doesn't pass to workload VPCs.
+#  Please check firewall rules for on-premises ↔ cloud traffic."
 ```
 
 ### Step 7: Check DX/VPN Attachment Association

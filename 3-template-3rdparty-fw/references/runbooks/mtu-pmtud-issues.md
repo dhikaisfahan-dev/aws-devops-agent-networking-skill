@@ -23,7 +23,7 @@
 | Direct Connect | 9001 or 1500 | Depends on VIF jumbo frame setting |
 | Internet (via NAT GW/IGW) | 1500 | Internet standard |
 | GWLB (GENEVE encap) | 8500 - ~50 overhead | GENEVE adds headers |
-| Network Firewall | 1500 | AWS NFW uses 1500 |
+| GWLB (GENEVE encap) | 8500 - ~50 overhead | 3rd party firewall via GWLB |
 
 ---
 
@@ -60,7 +60,7 @@ ip link show ens5   # Look for "mtu XXXX"
 # - Crosses TGW? → Max 8500
 # - Crosses VPN? → Max 1500
 # - Goes to internet? → Max 1500
-# - Crosses Network Firewall? → Max 1500
+# - Crosses GWLB + 3rd party firewall? → Max ~8450 (GENEVE overhead)
 # - Crosses GWLB? → Max ~8450
 ```
 
@@ -84,14 +84,17 @@ aws ec2 authorize-security-group-ingress --group-id <sg-id> \
   --ip-permissions IpProtocol=icmp,FromPort=3,ToPort=-1,IpRanges='[{CidrIp=0.0.0.0/0,Description="PMTUD - Fragmentation Needed"}]'
 ```
 
-### Step 4: Check Network Firewall / GWLB Impact
+### Step 4: Check GWLB / 3rd Party Firewall Impact
 
 ```bash
-# Network Firewall may block ICMP Type 3 responses
-# Check firewall rules allow ICMP
-aws network-firewall describe-rule-group \
-  --rule-group-name <rule-group> --type STATEFUL \
-  --query 'RuleGroup.RulesSource.StatefulRules[?Header.Protocol==`ICMP`]'
+# 3rd party firewall may block ICMP Type 3 responses
+# Check via FortiGate MCP (if available):
+# → FortiGate MCP: list_firewall_policies
+#   Look for policies that allow/deny ICMP
+
+# Or check GWLB health (if firewall is dropping due to MTU):
+aws elbv2 describe-target-health \
+  --target-group-arn <gwlb-target-group-arn>
 
 # GWLB adds GENEVE encapsulation (~50 bytes)
 # Effective MTU through GWLB = 8500 - 50 = ~8450
@@ -120,7 +123,7 @@ sudo ip link set dev ens5 mtu 8500
 # For paths crossing VPN or internet:
 sudo ip link set dev ens5 mtu 1500
 
-# For paths crossing Network Firewall:
+# For paths crossing GWLB + 3rd party firewall:
 sudo ip link set dev ens5 mtu 1500
 
 # Make persistent (Amazon Linux 2023):
@@ -136,7 +139,7 @@ echo 'MTU=1500' >> /etc/sysconfig/network-scripts/ifcfg-ens5
 | Instance MTU 9001, path crosses TGW | Large packets dropped silently | Set MTU to 8500 or enable PMTUD (allow ICMP 3) |
 | Instance MTU 9001, path crosses VPN | VPN transfers hang | Set MTU to 1400 on VPN-facing instances |
 | SG blocks ICMP Type 3 | PMTUD broken, large packets fail | Allow ICMP Type 3 inbound on all SGs |
-| Network Firewall blocks ICMP | PMTUD broken | Add ICMP PASS rule in firewall |
+| 3rd party firewall blocks ICMP | PMTUD broken | Add ICMP PASS rule in firewall |
 | Cross-region peering with jumbo | Large packets fail cross-region | Set MTU to 1500 for cross-region traffic |
 | GWLB GENEVE overhead | Packets just over 8450 fail | Set appliance MTU to account for GENEVE |
 | DX without jumbo frames | Large packets fail over DX | Enable jumbo on VIF or set MTU to 1500 |
@@ -149,7 +152,7 @@ echo 'MTU=1500' >> /etc/sysconfig/network-scripts/ifcfg-ens5
 Large transfers failing but small packets work?
 ├── Path crosses VPN? → Set MTU to 1400
 ├── Path crosses internet/NAT GW? → Set MTU to 1500
-├── Path crosses Network Firewall? → Set MTU to 1500
+├── Path crosses GWLB + firewall? → Set MTU to 8450 (or 1500 if unsure)
 ├── Path crosses TGW only? → Set MTU to 8500
 ├── Path is intra-VPC only? → Should work at 9001, check SG for ICMP 3
 └── Not sure? → Set MTU to 1500 (safe for all paths) + allow ICMP Type 3

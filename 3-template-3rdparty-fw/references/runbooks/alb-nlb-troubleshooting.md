@@ -262,7 +262,7 @@ aws elbv2 describe-target-group-attributes \
 Internet → ALB (Ingress VPC, 10.200.0.0/16)
   → ALB Subnet RT: 10.0.0.0/8 → TGW
   → TGW Spoke RT → Inspection VPC
-  → Network Firewall (must allow ALB→target traffic)
+  → Firewall/GWLB (must allow ALB→target traffic)
   → TGW Firewall RT → Workload VPC
   → Target SG (must allow from 10.200.0.0/16, NOT ALB SG ref)
   → Target EC2/Container

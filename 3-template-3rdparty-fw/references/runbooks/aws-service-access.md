@@ -148,26 +148,28 @@ aws ec2 describe-vpc-endpoints \
 }
 ```
 
-### Step 5: Check Network Firewall Rules
+### Step 5: Check Firewall (GWLB + 3rd Party)
 
-Traffic to AWS services still passes through the firewall before reaching the endpoint.
+Traffic to AWS services may pass through the firewall before reaching the endpoint (depends on routing).
 
 ```bash
-# Check if firewall is blocking AWS service traffic
-aws logs filter-log-events \
-  --log-group-name /aws/network-firewall/alert \
-  --filter-pattern '{ $.event.src_ip = "SOURCE_IP" && $.event.dest_port = 443 }' \
-  --start-time $(date -u -v-30M +%s000)
-```
+# Check GWLB target health
+aws elbv2 describe-target-health \
+  --target-group-arn <gwlb-target-group-arn> \
+  --query 'TargetHealthDescriptions[].{Target:Target.Id,Health:TargetHealth.State}'
 
-**If blocked:** Add rule to allow traffic to AWS service endpoints:
-```
-pass tcp 10.0.0.0/8 any -> $AWS_SERVICE_CIDRS 443 (msg:"Allow AWS service access"; sid:2000001;)
-```
+# If FortiAnalyzer MCP available — check if AWS service traffic blocked:
+# → FortiAnalyzer MCP: search_traffic_logs
+#   Filter: srcip=SOURCE_IP dstport=443
+#   Look for: action=deny with destination matching AWS service IPs
 
-Or use domain-based rules:
-```
-pass tls 10.0.0.0/8 any -> any 443 (tls.sni; content:".amazonaws.com"; endswith; msg:"Allow AWS services"; sid:2000002;)
+# If FortiGate MCP available — check egress policies:
+# → FortiGate MCP: list_firewall_policies
+#   Look for policies blocking port 443 to AWS service CIDRs
+
+# If no MCP — escalate to firewall team:
+# "Traffic to AWS services (port 443) is being blocked.
+#  Please check firewall rules allow HTTPS to AWS service endpoints."
 ```
 
 ### Step 6: Check Source Path (Workload VPC → Inspection VPC)
