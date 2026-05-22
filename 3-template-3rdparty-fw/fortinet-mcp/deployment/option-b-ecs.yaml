@@ -1,0 +1,611 @@
+# =============================================================================
+# Fortinet MCP Servers - Complete ECS Fargate Deployment
+#
+# WHAT THIS CREATES:
+# - ECS Fargate Cluster with 3 services (FortiGate, FortiManager, FortiAnalyzer MCP)
+# - Internal ALB with path-based routing (/fortigate/*, /fortimanager/*, /fortianalyzer/*)
+# - Security Groups (ALB + Tasks)
+# - CloudWatch Log Group
+# - IAM Roles
+#
+# PREREQUISITES:
+# 1. Docker images pushed to ECR (see option-b-ecs-guide.md Steps 2-3)
+# 2. VPC with private subnets that can reach your Fortinet appliances on port 443
+#
+# HOW TO DEPLOY:
+# aws cloudformation deploy \
+#   --template-file option-b-ecs.yaml \
+#   --stack-name fortinet-mcp \
+#   --region ap-southeast-3 \
+#   --capabilities CAPABILITY_NAMED_IAM \
+#   --parameter-overrides \
+#     VpcId=vpc-xxxxx \
+#     SubnetId1=subnet-aaaa \
+#     SubnetId2=subnet-bbbb \
+#     FgtImageUri=123456789012.dkr.ecr.ap-southeast-3.amazonaws.com/fortigate-mcp:latest \
+#     FmgImageUri=123456789012.dkr.ecr.ap-southeast-3.amazonaws.com/fortimanager-mcp:latest \
+#     FazImageUri=123456789012.dkr.ecr.ap-southeast-3.amazonaws.com/fortianalyzer-mcp:latest \
+#     FgtDevicesJson='{"devices":{"fw-primary":{"host":"10.100.1.10","api_token":"xxx","port":443,"verify_ssl":false,"vdom":"root"}}}' \
+#     FmgHost=10.100.1.20 \
+#     FmgApiToken=your-fmg-token \
+#     FazHost=10.100.1.30 \
+#     FazApiToken=your-faz-token
+# =============================================================================
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Fortinet MCP Servers - Complete ECS Fargate deployment with ALB.
+  Deploys FortiGate, FortiManager, and FortiAnalyzer MCP servers.
+
+# =============================================================================
+# PARAMETERS - These are what YOU need to fill in
+# =============================================================================
+Parameters:
+
+  # --- WHERE TO DEPLOY (your AWS network) ---
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: >
+      The VPC where MCP servers will run.
+      IMPORTANT: This VPC must have network route to your Fortinet appliances on port 443.
+
+  SubnetId1:
+    Type: AWS::EC2::Subnet::Id
+    Description: >
+      First private subnet (AZ-A).
+      Must be in the VPC above and have route to Fortinet appliances.
+
+  SubnetId2:
+    Type: AWS::EC2::Subnet::Id
+    Description: >
+      Second private subnet (AZ-B).
+      Must be in the VPC above and have route to Fortinet appliances.
+
+  # --- DOCKER IMAGES (from ECR after you push them) ---
+  FgtImageUri:
+    Type: String
+    Description: >
+      ECR image URI for FortiGate MCP.
+      Example: 123456789012.dkr.ecr.ap-southeast-3.amazonaws.com/fortigate-mcp:latest
+      Get this after running: docker push (see guide Step 3)
+
+  FmgImageUri:
+    Type: String
+    Description: >
+      ECR image URI for FortiManager MCP.
+      Example: 123456789012.dkr.ecr.ap-southeast-3.amazonaws.com/fortimanager-mcp:latest
+    Default: ''
+
+  FazImageUri:
+    Type: String
+    Description: >
+      ECR image URI for FortiAnalyzer MCP.
+      Example: 123456789012.dkr.ecr.ap-southeast-3.amazonaws.com/fortianalyzer-mcp:latest
+    Default: ''
+
+  # --- FORTIGATE CONNECTION (your FortiGate IP + token) ---
+  FgtDevicesJson:
+    Type: String
+    Description: >
+      FortiGate devices config as JSON string.
+      Example for 1 device: {"devices":{"fw-primary":{"host":"10.100.1.10","api_token":"xxx","port":443,"verify_ssl":false,"vdom":"root"}}}
+      Example for 2 devices: {"devices":{"fw-az-a":{"host":"10.100.1.10","api_token":"xxx"},"fw-az-b":{"host":"10.100.1.20","api_token":"yyy"}}}
+    Default: '{"devices":{}}'
+
+  # --- FORTIMANAGER CONNECTION (your FortiManager IP + token) ---
+  FmgHost:
+    Type: String
+    Description: >
+      FortiManager IP address or hostname.
+      Example: 10.100.1.20
+    Default: ''
+
+  FmgApiToken:
+    Type: String
+    NoEcho: true
+    Description: >
+      FortiManager API token.
+      Get from: FortiManager → System → Admin → Administrators → API Token
+    Default: ''
+
+  # --- FORTIANALYZER CONNECTION (your FortiAnalyzer IP + token) ---
+  FazHost:
+    Type: String
+    Description: >
+      FortiAnalyzer IP address or hostname.
+      Example: 10.100.1.30
+    Default: ''
+
+  FazApiToken:
+    Type: String
+    NoEcho: true
+    Description: >
+      FortiAnalyzer API token.
+      Get from: FortiAnalyzer → System → Admin → Administrators → API Token
+    Default: ''
+
+  # --- OPTIONAL SETTINGS ---
+  FazAdom:
+    Type: String
+    Default: root
+    Description: FortiAnalyzer/FortiManager ADOM name (most use "root")
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues: [DEBUG, INFO, WARNING, ERROR]
+    Description: Log verbosity for MCP servers
+
+# =============================================================================
+# CONDITIONS - Determine which services to deploy
+# =============================================================================
+Conditions:
+  DeployFmg: !Not [!Equals [!Ref FmgHost, '']]
+  DeployFaz: !Not [!Equals [!Ref FazHost, '']]
+
+# =============================================================================
+# RESOURCES - Everything that gets created
+# =============================================================================
+Resources:
+
+  # --------------------------------------------------------------------------
+  # SECURITY GROUPS
+  # --------------------------------------------------------------------------
+
+  # ALB Security Group: allows HTTP from internal networks
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB for Fortinet MCP servers - allows internal HTTP
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.0.0.0/8
+          Description: HTTP from all internal networks (10.x.x.x)
+      Tags:
+        - Key: Name
+          Value: fortinet-mcp-alb-sg
+        - Key: auto-delete
+          Value: 'no'
+
+  # Task Security Group: only allows traffic from ALB, outbound to Fortinet
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS tasks - only ALB inbound, Fortinet outbound
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8003
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+          Description: From ALB only (ports 8001-8003)
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS to Fortinet appliances (port 443)
+      Tags:
+        - Key: Name
+          Value: fortinet-mcp-task-sg
+        - Key: auto-delete
+          Value: 'no'
+
+  # --------------------------------------------------------------------------
+  # LOAD BALANCER (Internal ALB)
+  # --------------------------------------------------------------------------
+
+  McpAlb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: fortinet-mcp-alb
+      Scheme: internal
+      Type: application
+      Subnets:
+        - !Ref SubnetId1
+        - !Ref SubnetId2
+      SecurityGroups:
+        - !Ref AlbSecurityGroup
+      Tags:
+        - Key: Name
+          Value: fortinet-mcp-alb
+        - Key: auto-delete
+          Value: 'no'
+
+  # Default listener (returns 200 for health checks)
+  McpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref McpAlb
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: '200'
+            ContentType: text/plain
+            MessageBody: 'Fortinet MCP Servers Active'
+
+  # --------------------------------------------------------------------------
+  # TARGET GROUPS (one per MCP server)
+  # --------------------------------------------------------------------------
+
+  FgtTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: fortinet-mcp-fgt-tg
+      Protocol: HTTP
+      Port: 8001
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckPort: '8001'
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckIntervalSeconds: 30
+
+  FmgTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: DeployFmg
+    Properties:
+      Name: fortinet-mcp-fmg-tg
+      Protocol: HTTP
+      Port: 8002
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckPort: '8002'
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckIntervalSeconds: 30
+
+  FazTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: DeployFaz
+    Properties:
+      Name: fortinet-mcp-faz-tg
+      Protocol: HTTP
+      Port: 8003
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckPort: '8003'
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckIntervalSeconds: 30
+
+  # --------------------------------------------------------------------------
+  # ALB LISTENER RULES (path-based routing)
+  # /fortigate/*    → FortiGate MCP
+  # /fortimanager/* → FortiManager MCP
+  # /fortianalyzer/*→ FortiAnalyzer MCP
+  # --------------------------------------------------------------------------
+
+  FgtListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref McpListener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          Values: ['/fortigate/*']
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref FgtTargetGroup
+
+  FmgListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: DeployFmg
+    Properties:
+      ListenerArn: !Ref McpListener
+      Priority: 2
+      Conditions:
+        - Field: path-pattern
+          Values: ['/fortimanager/*']
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref FmgTargetGroup
+
+  FazListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: DeployFaz
+    Properties:
+      ListenerArn: !Ref McpListener
+      Priority: 3
+      Conditions:
+        - Field: path-pattern
+          Values: ['/fortianalyzer/*']
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref FazTargetGroup
+
+  # --------------------------------------------------------------------------
+  # ECS CLUSTER
+  # --------------------------------------------------------------------------
+
+  McpCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: fortinet-mcp
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  # --------------------------------------------------------------------------
+  # IAM ROLES
+  # --------------------------------------------------------------------------
+
+  # Role for ECS to pull images from ECR and write logs
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fortinet-mcp-execution-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  # Role for the task itself (currently no extra permissions needed)
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fortinet-mcp-task-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  # --------------------------------------------------------------------------
+  # CLOUDWATCH LOGS
+  # --------------------------------------------------------------------------
+
+  McpLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/fortinet-mcp
+      RetentionInDays: 14
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  # --------------------------------------------------------------------------
+  # ECS TASK DEFINITION + SERVICE: FortiGate MCP
+  # --------------------------------------------------------------------------
+
+  FgtTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: fortigate-mcp
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: fortigate-mcp
+          Image: !Ref FgtImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8001
+          Environment:
+            - Name: FORTIGATE_CONFIG_FILE
+              Value: /app/devices.json
+            - Name: LOG_LEVEL
+              Value: !Ref LogLevel
+            # The devices.json content is passed as an env var and written to file at startup
+            - Name: DEVICES_JSON_CONTENT
+              Value: !Ref FgtDevicesJson
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref McpLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: fortigate
+
+  FgtService:
+    Type: AWS::ECS::Service
+    DependsOn: FgtListenerRule
+    Properties:
+      ServiceName: fortigate-mcp
+      Cluster: !Ref McpCluster
+      TaskDefinition: !Ref FgtTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref SubnetId1
+            - !Ref SubnetId2
+          SecurityGroups:
+            - !Ref TaskSecurityGroup
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - ContainerName: fortigate-mcp
+          ContainerPort: 8001
+          TargetGroupArn: !Ref FgtTargetGroup
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  # --------------------------------------------------------------------------
+  # ECS TASK DEFINITION + SERVICE: FortiManager MCP
+  # --------------------------------------------------------------------------
+
+  FmgTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployFmg
+    Properties:
+      Family: fortimanager-mcp
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: fortimanager-mcp
+          Image: !Ref FmgImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8002
+          Environment:
+            - Name: FMG_HOST
+              Value: !Ref FmgHost
+            - Name: FMG_API_TOKEN
+              Value: !Ref FmgApiToken
+            - Name: FMG_PORT
+              Value: '443'
+            - Name: FMG_VERIFY_SSL
+              Value: 'false'
+            - Name: FMG_ADOM
+              Value: !Ref FazAdom
+            - Name: LOG_LEVEL
+              Value: !Ref LogLevel
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref McpLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: fortimanager
+
+  FmgService:
+    Type: AWS::ECS::Service
+    Condition: DeployFmg
+    DependsOn: FmgListenerRule
+    Properties:
+      ServiceName: fortimanager-mcp
+      Cluster: !Ref McpCluster
+      TaskDefinition: !Ref FmgTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref SubnetId1
+            - !Ref SubnetId2
+          SecurityGroups:
+            - !Ref TaskSecurityGroup
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - ContainerName: fortimanager-mcp
+          ContainerPort: 8002
+          TargetGroupArn: !Ref FmgTargetGroup
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  # --------------------------------------------------------------------------
+  # ECS TASK DEFINITION + SERVICE: FortiAnalyzer MCP
+  # --------------------------------------------------------------------------
+
+  FazTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployFaz
+    Properties:
+      Family: fortianalyzer-mcp
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: fortianalyzer-mcp
+          Image: !Ref FazImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8003
+          Environment:
+            - Name: FAZ_HOST
+              Value: !Ref FazHost
+            - Name: FAZ_API_TOKEN
+              Value: !Ref FazApiToken
+            - Name: FAZ_PORT
+              Value: '443'
+            - Name: FAZ_VERIFY_SSL
+              Value: 'false'
+            - Name: FAZ_ADOM
+              Value: !Ref FazAdom
+            - Name: LOG_LEVEL
+              Value: !Ref LogLevel
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref McpLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: fortianalyzer
+
+  FazService:
+    Type: AWS::ECS::Service
+    Condition: DeployFaz
+    DependsOn: FazListenerRule
+    Properties:
+      ServiceName: fortianalyzer-mcp
+      Cluster: !Ref McpCluster
+      TaskDefinition: !Ref FazTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref SubnetId1
+            - !Ref SubnetId2
+          SecurityGroups:
+            - !Ref TaskSecurityGroup
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - ContainerName: fortianalyzer-mcp
+          ContainerPort: 8003
+          TargetGroupArn: !Ref FazTargetGroup
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+# =============================================================================
+# OUTPUTS - What you get after deployment
+# =============================================================================
+Outputs:
+
+  AlbDns:
+    Description: Internal ALB DNS name (use this to register MCP in DevOps Agent)
+    Value: !GetAtt McpAlb.DNSName
+
+  FortiGateMcpUrl:
+    Description: FortiGate MCP endpoint URL
+    Value: !Sub "http://${McpAlb.DNSName}/fortigate/mcp"
+
+  FortiManagerMcpUrl:
+    Condition: DeployFmg
+    Description: FortiManager MCP endpoint URL
+    Value: !Sub "http://${McpAlb.DNSName}/fortimanager/mcp"
+
+  FortiAnalyzerMcpUrl:
+    Condition: DeployFaz
+    Description: FortiAnalyzer MCP endpoint URL
+    Value: !Sub "http://${McpAlb.DNSName}/fortianalyzer/mcp"
+
+  ClusterName:
+    Description: ECS Cluster name
+    Value: !Ref McpCluster
+
+  DeleteCommand:
+    Description: Command to delete this stack
+    Value: !Sub "aws cloudformation delete-stack --stack-name ${AWS::StackName} --region ${AWS::Region}"

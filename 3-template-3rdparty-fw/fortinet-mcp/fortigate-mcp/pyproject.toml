@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fortigate-mcp"
+version = "1.0.0"
+description = "MCP server for FortiGate firewall management and investigation"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+fortigate-mcp = "src.server:main"

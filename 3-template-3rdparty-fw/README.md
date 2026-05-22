@@ -1,0 +1,68 @@
+# Reusable Networking Skill Template (3rd Party Firewall + GWLB)
+
+**Status:** ✅ Ready to deploy
+**Last Updated:** May 2026
+**Zip:** `deploy/skill-template-3rdparty-fw.zip` (45KB)
+**MCP Servers:** `fortinet-mcp/` (built, not yet tested against live devices)
+**For:** Environments using Fortinet FortiGate, Palo Alto VM-Series, or other 3rd party firewalls behind AWS Gateway Load Balancer (GWLB)
+
+For environments using Fortinet FortiGate, Palo Alto VM-Series, or other 3rd party firewalls behind AWS Gateway Load Balancer (GWLB).
+
+## How to Use
+
+### 1. Copy this folder
+```bash
+cp -r skill-template-3rdparty-fw/ my-environment-skill/
+```
+
+### 2. Update SKILL.md (Optional)
+
+The template is environment-agnostic — no CIDRs or resource IDs to update. The DevOps Agent discovers everything dynamically via AWS API.
+
+Only update if your architecture differs from the standard pattern.
+
+### 3. Copy runbooks
+```bash
+# Runbooks are shared — copy from the main runbooks folder
+cp ../runbooks/*.md my-environment-skill/references/runbooks/
+```
+
+### 4. Package and upload
+```bash
+cd my-environment-skill/
+zip -r my-skill.zip .
+# Upload to DevOps Agent → Skills → Add skill → Upload skill
+```
+
+## What's Included
+
+| File | Content |
+|------|---------|
+| `SKILL.md` | Investigation methodology for GWLB + 3rd party firewall architecture |
+| `references/runbooks/` | Copy from main runbooks (shared) |
+
+## Key Differences from AWS Network Firewall Template
+
+| Aspect | AWS NFW Template | This Template |
+|--------|-----------------|---------------|
+| Inspection routing | → VPC Endpoint (vpce-fw) | → GWLB Endpoint (vpce-gwlb) |
+| Health check | N/A (managed) | GWLB Target Group health |
+| Firewall logs | CloudWatch (AWS API) | Appliance-specific (NOT AWS API) |
+| Rule investigation | `aws network-firewall describe-rule-group` | Escalate to firewall team |
+| Scaling | Managed | Auto Scaling Group |
+
+## Architecture Requirements
+
+- ✅ Hub-and-spoke with Transit Gateway
+- ✅ Gateway Load Balancer (GWLB) in inspection VPC
+- ✅ 3rd party firewall appliances as GWLB targets (Fortinet/Palo Alto/other)
+- ✅ GWLB Endpoints in route tables
+- ✅ Appliance Mode enabled on inspection VPC TGW attachment
+- ✅ Two TGW route tables (Spoke + Firewall)
+- ✅ Security Groups only (no NACLs)
+
+## Limitations
+
+- Agent CANNOT query firewall appliance rules (Fortinet/Palo Alto management is outside AWS API)
+- Agent CAN check: GWLB health, routing, EC2 appliance status, VPC Flow Logs, TGW Flow Logs
+- If traffic reaches the appliance but doesn't pass → escalate to firewall team

@@ -1,0 +1,22 @@
+{
+  "_comment": "Add your FortiGate devices below. Remove the examples and replace with your own.",
+  "_example_single": "If you have 1 FortiGate, keep only 1 entry",
+  "_example_multiple": "If you have 2+ FortiGates, add more entries",
+
+  "devices": {
+    "fw-az-a": {
+      "host": "10.100.1.10",
+      "api_token": "your-api-token-for-fw-az-a",
+      "port": 443,
+      "verify_ssl": false,
+      "vdom": "root"
+    },
+    "fw-az-b": {
+      "host": "10.100.1.20",
+      "api_token": "your-api-token-for-fw-az-b",
+      "port": 443,
+      "verify_ssl": false,
+      "vdom": "root"
+    }
+  }
+}

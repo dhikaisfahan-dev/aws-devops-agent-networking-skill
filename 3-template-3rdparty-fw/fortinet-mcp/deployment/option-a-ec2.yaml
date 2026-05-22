@@ -1,0 +1,305 @@
+# =============================================================================
+# Fortinet MCP Servers - EC2 Deployment (Simple, Single Instance)
+#
+# WHAT THIS CREATES:
+# - 1x EC2 instance (t4g.large, ARM-based, cost-effective)
+# - Docker + Docker Compose installed automatically
+# - All 3 MCP servers running in containers
+# - Security Group (allows 8001-8003 from internal + 443 outbound to Fortinet)
+# - IAM Role with SSM access (for Session Manager — no SSH key needed)
+#
+# HOW TO DEPLOY:
+# aws cloudformation deploy \
+#   --template-file option-a-ec2.yaml \
+#   --stack-name fortinet-mcp-ec2 \
+#   --region ap-southeast-3 \
+#   --capabilities CAPABILITY_NAMED_IAM \
+#   --parameter-overrides \
+#     VpcId=vpc-xxxxx \
+#     SubnetId=subnet-aaaa \
+#     FgtDevicesJson='{"devices":{"fw-primary":{"host":"10.100.1.10","api_token":"xxx","port":443,"verify_ssl":false,"vdom":"root"}}}' \
+#     FmgHost=10.100.1.20 \
+#     FmgApiToken=your-fmg-token \
+#     FazHost=10.100.1.30 \
+#     FazApiToken=your-faz-token
+#
+# AFTER DEPLOY:
+# 1. Get EC2 private IP from stack outputs
+# 2. MCP URLs:
+#    - FortiGate:     http://<ec2-ip>:8003/mcp
+#    - FortiManager:  http://<ec2-ip>:8002/mcp
+#    - FortiAnalyzer: http://<ec2-ip>:8001/mcp
+# 3. Register these URLs in your DevOps Agent Space
+# =============================================================================
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Fortinet MCP Servers on EC2 (t4g.large) with Docker Compose.
+  Simple single-instance deployment for lab or small environments.
+
+# =============================================================================
+# PARAMETERS - Fill these in when deploying
+# =============================================================================
+Parameters:
+
+  # --- WHERE TO DEPLOY ---
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: >
+      VPC where the EC2 will run.
+      Must have network route to your Fortinet appliances on port 443.
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: >
+      Private subnet for the EC2 instance.
+      Must be in the VPC above and have route to Fortinet appliances.
+      Does NOT need internet access (uses SSM for management).
+
+  # --- FORTIGATE CONNECTION ---
+  FgtDevicesJson:
+    Type: String
+    Description: >
+      FortiGate devices config as JSON string.
+      1 device: {"devices":{"fw-primary":{"host":"10.100.1.10","api_token":"xxx","port":443,"verify_ssl":false,"vdom":"root"}}}
+      2 devices: {"devices":{"fw-a":{"host":"10.100.1.10","api_token":"xxx"},"fw-b":{"host":"10.100.1.20","api_token":"yyy"}}}
+    Default: '{"devices":{}}'
+
+  # --- FORTIMANAGER CONNECTION ---
+  FmgHost:
+    Type: String
+    Description: FortiManager IP address (leave empty if you don't have FortiManager)
+    Default: ''
+
+  FmgApiToken:
+    Type: String
+    NoEcho: true
+    Description: FortiManager API token
+    Default: ''
+
+  # --- FORTIANALYZER CONNECTION ---
+  FazHost:
+    Type: String
+    Description: FortiAnalyzer IP address (leave empty if you don't have FortiAnalyzer)
+    Default: ''
+
+  FazApiToken:
+    Type: String
+    NoEcho: true
+    Description: FortiAnalyzer API token
+    Default: ''
+
+  # --- OPTIONAL ---
+  Adom:
+    Type: String
+    Default: root
+    Description: ADOM name for FortiManager/FortiAnalyzer
+
+  # AMI - Amazon Linux 2023 ARM (for t4g instance)
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64
+    Description: Amazon Linux 2023 ARM64 AMI (for t4g.large)
+
+# =============================================================================
+# RESOURCES
+# =============================================================================
+Resources:
+
+  # --- Security Group ---
+  McpSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Fortinet MCP EC2 - allows MCP ports inbound, HTTPS outbound
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # MCP server ports (from internal networks)
+        - IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8003
+          CidrIp: 10.0.0.0/8
+          Description: MCP ports from internal networks
+      SecurityGroupEgress:
+        # HTTPS to Fortinet appliances
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS to Fortinet appliances and AWS services (SSM)
+      Tags:
+        - Key: Name
+          Value: fortinet-mcp-ec2-sg
+        - Key: auto-delete
+          Value: 'no'
+
+  # --- IAM Role (for SSM Session Manager access) ---
+  McpEc2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fortinet-mcp-ec2-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  McpInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref McpEc2Role
+
+  # --- EC2 Instance ---
+  McpEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t4g.large
+      ImageId: !Ref LatestAmiId
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref McpSecurityGroup
+      IamInstanceProfile: !Ref McpInstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+
+          # ===========================================
+          # Install Docker
+          # ===========================================
+          yum install -y docker git
+          systemctl start docker
+          systemctl enable docker
+
+          # Install Docker Compose
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+
+          # ===========================================
+          # Create MCP server directory
+          # ===========================================
+          mkdir -p /opt/fortinet-mcp
+
+          # ===========================================
+          # FortiGate MCP - devices.json
+          # ===========================================
+          cat > /opt/fortinet-mcp/devices.json << 'FGTEOF'
+          ${FgtDevicesJson}
+          FGTEOF
+
+          # ===========================================
+          # FortiManager MCP - .env
+          # ===========================================
+          cat > /opt/fortinet-mcp/fortimanager.env << 'FMGEOF'
+          FMG_HOST=${FmgHost}
+          FMG_API_TOKEN=${FmgApiToken}
+          FMG_PORT=443
+          FMG_VERIFY_SSL=false
+          FMG_ADOM=${Adom}
+          LOG_LEVEL=INFO
+          FMGEOF
+
+          # ===========================================
+          # FortiAnalyzer MCP - .env
+          # ===========================================
+          cat > /opt/fortinet-mcp/fortianalyzer.env << 'FAZEOF'
+          FAZ_HOST=${FazHost}
+          FAZ_API_TOKEN=${FazApiToken}
+          FAZ_PORT=443
+          FAZ_VERIFY_SSL=false
+          FAZ_ADOM=${Adom}
+          LOG_LEVEL=INFO
+          FAZEOF
+
+          # ===========================================
+          # Docker Compose file
+          # ===========================================
+          cat > /opt/fortinet-mcp/docker-compose.yml << 'COMPOSEEOF'
+          version: '3.8'
+          services:
+            fortianalyzer-mcp:
+              image: fortinet-mcp/fortianalyzer:latest
+              container_name: fortianalyzer-mcp
+              restart: unless-stopped
+              ports:
+                - "8001:8003"
+              env_file:
+                - ./fortianalyzer.env
+
+            fortimanager-mcp:
+              image: fortinet-mcp/fortimanager:latest
+              container_name: fortimanager-mcp
+              restart: unless-stopped
+              ports:
+                - "8002:8002"
+              env_file:
+                - ./fortimanager.env
+
+            fortigate-mcp:
+              image: fortinet-mcp/fortigate:latest
+              container_name: fortigate-mcp
+              restart: unless-stopped
+              ports:
+                - "8003:8001"
+              environment:
+                - FORTIGATE_CONFIG_FILE=/app/devices.json
+                - LOG_LEVEL=INFO
+              volumes:
+                - ./devices.json:/app/devices.json:ro
+          COMPOSEEOF
+
+          # ===========================================
+          # NOTE: Docker images need to be built/pulled
+          # The customer must push images to this EC2
+          # or build from source after deployment.
+          # See option-a-ec2.md for build instructions.
+          # ===========================================
+
+          echo "Fortinet MCP EC2 setup complete. Build/pull Docker images to start services."
+          echo "Config files at: /opt/fortinet-mcp/"
+
+      Tags:
+        - Key: Name
+          Value: fortinet-mcp-ec2
+        - Key: auto-delete
+          Value: 'no'
+
+# =============================================================================
+# OUTPUTS
+# =============================================================================
+Outputs:
+
+  InstanceId:
+    Description: EC2 Instance ID (use with SSM Session Manager to connect)
+    Value: !Ref McpEc2Instance
+
+  PrivateIp:
+    Description: EC2 Private IP (use this for MCP endpoint URLs)
+    Value: !GetAtt McpEc2Instance.PrivateIp
+
+  FortiGateMcpUrl:
+    Description: FortiGate MCP endpoint URL
+    Value: !Sub "http://${McpEc2Instance.PrivateIp}:8003/mcp"
+
+  FortiManagerMcpUrl:
+    Description: FortiManager MCP endpoint URL
+    Value: !Sub "http://${McpEc2Instance.PrivateIp}:8002/mcp"
+
+  FortiAnalyzerMcpUrl:
+    Description: FortiAnalyzer MCP endpoint URL
+    Value: !Sub "http://${McpEc2Instance.PrivateIp}:8001/mcp"
+
+  SsmConnectCommand:
+    Description: Command to connect to EC2 via SSM (no SSH key needed)
+    Value: !Sub "aws ssm start-session --target ${McpEc2Instance} --region ${AWS::Region}"
+
+  DeleteCommand:
+    Description: Command to delete this stack
+    Value: !Sub "aws cloudformation delete-stack --stack-name ${AWS::StackName} --region ${AWS::Region}"
