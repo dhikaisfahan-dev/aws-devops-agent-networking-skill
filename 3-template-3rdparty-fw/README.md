@@ -68,3 +68,25 @@ zip -r my-skill.zip .
 - Agent CAN check: GWLB health, routing, EC2 appliance status, VPC Flow Logs, TGW Flow Logs (via AWS API)
 - Agent CANNOT modify firewall rules — always recommends and escalates to firewall team
 - If traffic reaches a non-Fortinet appliance but doesn't pass → escalate to firewall team
+
+## What Happens If MCP Server Is Unreachable
+
+If the Fortinet MCP server is down, unreachable, or returns errors:
+
+- **The agent does NOT stop investigating** — it falls back to AWS-only investigation
+- The agent will still check: Security Groups, Route Tables, TGW, GWLB health, VPC Flow Logs, CloudWatch metrics
+- The agent will report: "Unable to reach FortiAnalyzer/FortiManager/FortiGate MCP — firewall-level investigation unavailable"
+- The agent will recommend: "Escalate to firewall team for policy/log verification"
+
+**The skill handles this gracefully** (see SKILL.md "Decision: Which MCP Tools Are Available?" section):
+```
+FAZ + FMG + FGT available → Full autonomous investigation
+FMG + FGT only            → Policy check OK, no log search
+FGT only                  → Direct device check only
+None available            → AWS-only investigation, escalate all firewall checks
+```
+
+**To prevent MCP downtime:**
+- Use ECS Fargate deployment (auto-restarts crashed containers)
+- Monitor MCP health endpoints (`/health`) with CloudWatch alarms
+- Set `restart: unless-stopped` in Docker Compose
