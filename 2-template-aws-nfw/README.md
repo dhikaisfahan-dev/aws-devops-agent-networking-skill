@@ -32,12 +32,12 @@ cd my-skill/ && zip -r my-skill.zip SKILL.md KNOWN-EXCEPTIONS.md references/
 |------|---------|
 | `SKILL.md` | Investigation methodology, path tracing, log correlation, DX Gateway, SD-WAN, common root causes |
 | `KNOWN-EXCEPTIONS.md` | Template for environment-specific exceptions (optional, fill in per environment) |
-| `references/runbooks/` | 13 operational runbooks |
+| `references/runbooks/` | 16 operational runbooks |
 | `references/troubleshooting-guide.md` | Decision trees, VPC/TGW/Firewall/CloudTrail/CloudWatch log queries |
 | `references/best-practices.md` | Design principles for SG, RT, TGW, Firewall, Endpoints |
 | `references/cli-reference.md` | AWS CLI commands (19 sections) |
 
-## Runbooks (13)
+## Runbooks (16)
 
 | Runbook | Scenario |
 |---------|----------|
@@ -54,6 +54,9 @@ cd my-skill/ && zip -r my-skill.zip SKILL.md KNOWN-EXCEPTIONS.md references/
 | mtu-pmtud-issues | MTU / Path MTU Discovery |
 | privatelink-troubleshooting | Cross-account VPC endpoints |
 | route53-phz-sharing | Private Hosted Zone sharing across accounts |
+| lambda-vpc-networking | Lambda VPC attachment, ENI, NAT GW requirement |
+| nacl-troubleshooting | Network ACLs, stateless rules, ephemeral ports |
+| cloud-wan-troubleshooting | AWS Cloud WAN segments, policies, service insertion |
 
 ## Architecture Requirements
 

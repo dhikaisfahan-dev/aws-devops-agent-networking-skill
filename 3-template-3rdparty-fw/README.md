@@ -32,10 +32,10 @@ See `fortinet-mcp/deployment/devops-agent-config.md`
 | `SKILL.md` | Full MCP orchestration, GWLB monitoring, DX Gateway, SD-WAN, Fortinet integration |
 | `KNOWN-EXCEPTIONS.md` | Template for environment-specific exceptions (optional) |
 | `MCP-SERVERS.md` | Fortinet MCP server links and reference |
-| `references/runbooks/` | 14 operational runbooks |
+| `references/runbooks/` | 16 operational runbooks |
 | `fortinet-mcp/` | Custom MCP server code + deployment templates |
 
-## Runbooks (14)
+## Runbooks (16)
 
 | Runbook | Scenario |
 |---------|----------|
@@ -44,7 +44,6 @@ See `fortinet-mcp/deployment/devops-agent-config.md`
 | internet-ingress | Inbound via ALB/NLB |
 | aws-service-access | VPC endpoints (S3, SQS, etc.) |
 | hybrid-connectivity | Direct Connect + VPN |
-| firewall-investigation | AWS Network Firewall (if also present) |
 | gwlb-firewall-investigation | GWLB + 3rd party firewall deep-dive |
 | vpc-peering | VPC Peering troubleshooting |
 | dns-troubleshooting | Route 53 Resolver, private hosted zones |
@@ -53,6 +52,9 @@ See `fortinet-mcp/deployment/devops-agent-config.md`
 | mtu-pmtud-issues | MTU / Path MTU Discovery |
 | privatelink-troubleshooting | Cross-account VPC endpoints |
 | route53-phz-sharing | Private Hosted Zone sharing across accounts |
+| lambda-vpc-networking | Lambda VPC attachment, ENI, NAT GW requirement |
+| nacl-troubleshooting | Network ACLs, stateless rules, ephemeral ports |
+| cloud-wan-troubleshooting | AWS Cloud WAN segments, policies, service insertion |
 
 ## Key Differences from AWS Network Firewall Template
 
