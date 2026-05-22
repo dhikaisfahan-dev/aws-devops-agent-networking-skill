@@ -169,14 +169,14 @@ aws network-firewall list-firewalls \
 ### Describe firewall
 ```bash
 aws network-firewall describe-firewall \
-  --firewall-name maybank-inspection-fw \
+  --firewall-name <firewall-name> \
   --query '{Status:FirewallStatus.Status,Policy:Firewall.FirewallPolicyArn,Subnets:Firewall.SubnetMappings[].SubnetId,Endpoints:FirewallStatus.SyncStates}'
 ```
 
 ### Get firewall endpoints (for route table configuration)
 ```bash
 aws network-firewall describe-firewall \
-  --firewall-name maybank-inspection-fw \
+  --firewall-name <firewall-name> \
   --query 'FirewallStatus.SyncStates' \
   --output json
 ```
@@ -184,7 +184,7 @@ aws network-firewall describe-firewall \
 ### Describe firewall policy
 ```bash
 aws network-firewall describe-firewall-policy \
-  --firewall-policy-name maybank-policy \
+  --firewall-policy-name <policy-name> \
   --query '{StatelessRuleGroups:FirewallPolicy.StatelessRuleGroupReferences,StatefulRuleGroups:FirewallPolicy.StatefulRuleGroupReferences,DefaultActions:FirewallPolicy.StatelessDefaultActions}'
 ```
 
@@ -207,7 +207,7 @@ aws network-firewall describe-rule-group \
 ### Check firewall logging configuration
 ```bash
 aws network-firewall describe-logging-configuration \
-  --firewall-name maybank-inspection-fw
+  --firewall-name <firewall-name>
 ```
 
 ---
@@ -330,7 +330,31 @@ aws ec2 describe-vpn-connections \
 
 ---
 
-## 10. VPC Peering
+## 10. SD-WAN / TGW Connect
+
+### List TGW Connect attachments
+```bash
+aws ec2 describe-transit-gateway-connects \
+  --query 'TransitGatewayConnects[].{Id:TransitGatewayAttachmentId,TransportAttachment:TransportTransitGatewayAttachmentId,State:State}'
+```
+
+### Check TGW Connect Peers (GRE + BGP)
+```bash
+aws ec2 describe-transit-gateway-connect-peers \
+  --query 'TransitGatewayConnectPeers[].{Id:TransitGatewayConnectPeerId,State:State,InsideCidr:ConnectPeerConfiguration.InsideCidrBlocks,PeerAddress:ConnectPeerConfiguration.PeerAddress,BgpConfigurations:ConnectPeerConfiguration.BgpConfigurations[].{PeerAsn:PeerAsn,Status:BgpStatus}}'
+```
+
+### Check BGP routes learned from Connect peers
+```bash
+aws ec2 search-transit-gateway-routes \
+  --transit-gateway-route-table-id <spoke-rt> \
+  --filters "Name=type,Values=propagated" \
+  --query 'Routes[].{CIDR:DestinationCidrBlock,Type:Type,Attachment:TransitGatewayAttachments[0].TransitGatewayAttachmentId}'
+```
+
+---
+
+## 11. VPC Peering
 
 ### List peering connections
 ```bash
@@ -362,16 +386,16 @@ aws ec2 modify-vpc-peering-connection-options \
 
 ---
 
-## 11. VPC Flow Logs
+## 12. VPC Flow Logs
 
 ### Query flow logs with CloudWatch Logs Insights
 ```bash
 aws logs start-query \
-  --log-group-name /vpc/flow-logs/vpc-wl1 \
+  --log-group-name /vpc/flow-logs/<your-vpc-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, protocol, action
-    | filter srcAddr = "10.0.1.10" and dstAddr = "10.1.1.20"
+    | filter srcAddr = "<source-ip>" and dstAddr = "<destination-ip>"
     | sort @timestamp desc
     | limit 50'
 ```
@@ -384,7 +408,7 @@ aws logs get-query-results --query-id "query-id-from-above"
 ### Filter for REJECT actions
 ```bash
 aws logs start-query \
-  --log-group-name /vpc/flow-logs/vpc-wl1 \
+  --log-group-name /vpc/flow-logs/<your-vpc-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, dstPort, action
@@ -396,7 +420,7 @@ aws logs start-query \
 
 ---
 
-## 12. Network Firewall Logs
+## 13. Network Firewall Logs
 
 ### Query alert logs
 ```bash
@@ -405,7 +429,7 @@ aws logs start-query \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, event.src_ip, event.dest_ip, event.src_port, event.dest_port, event.proto, event.alert.action, event.alert.signature
-    | filter event.src_ip = "10.0.1.10"
+    | filter event.src_ip = "<source-ip>"
     | sort @timestamp desc
     | limit 50'
 ```
@@ -417,23 +441,23 @@ aws logs start-query \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, event.src_ip, event.dest_ip, event.proto, event.app_proto
-    | filter event.src_ip = "10.0.1.10" and event.dest_ip = "10.1.1.20"
+    | filter event.src_ip = "<source-ip>" and event.dest_ip = "<destination-ip>"
     | sort @timestamp desc
     | limit 50'
 ```
 
 ---
 
-## 13. Transit Gateway Flow Logs
+## 14. Transit Gateway Flow Logs
 
 ### Query TGW flow logs for specific traffic
 ```bash
 aws logs start-query \
-  --log-group-name /tgw/flow-logs/maybank-lab \
+  --log-group-name /tgw/flow-logs/<your-tgw-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, protocol, packets, bytes, flowDirection, tgwId, tgwAttachmentId, tgwSrcVpc, tgwDstVpc, action, logStatus
-    | filter srcAddr = "10.0.1.229"
+    | filter srcAddr = "<source-ip>"
     | sort @timestamp desc
     | limit 50'
 ```
@@ -441,7 +465,7 @@ aws logs start-query \
 ### Find REJECT/DROP in TGW flow logs
 ```bash
 aws logs start-query \
-  --log-group-name /tgw/flow-logs/maybank-lab \
+  --log-group-name /tgw/flow-logs/<your-tgw-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, dstPort, tgwSrcVpc, tgwDstVpc, action
@@ -453,7 +477,7 @@ aws logs start-query \
 ### Traffic volume per TGW attachment
 ```bash
 aws logs start-query \
-  --log-group-name /tgw/flow-logs/maybank-lab \
+  --log-group-name /tgw/flow-logs/<your-tgw-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'stats sum(bytes) as totalBytes, count(*) as flowCount by tgwAttachmentId, flowDirection
@@ -463,7 +487,7 @@ aws logs start-query \
 ### Trace traffic between two VPCs via TGW
 ```bash
 aws logs start-query \
-  --log-group-name /tgw/flow-logs/maybank-lab \
+  --log-group-name /tgw/flow-logs/<your-tgw-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, protocol, flowDirection, tgwSrcVpc, tgwDstVpc, tgwAttachmentId, action
@@ -475,7 +499,7 @@ aws logs start-query \
 ### Check TGW blackhole drops (packets with no matching route)
 ```bash
 aws logs start-query \
-  --log-group-name /tgw/flow-logs/maybank-lab \
+  --log-group-name /tgw/flow-logs/<your-tgw-log-group> \
   --start-time $(date -u -v-1H +%s) \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, srcAddr, dstAddr, dstPort, tgwAttachmentId, action, logStatus
@@ -486,7 +510,7 @@ aws logs start-query \
 
 ---
 
-## 14. VPC Reachability Analyzer
+## 15. VPC Reachability Analyzer
 
 ### Create network insights path
 ```bash
@@ -519,7 +543,7 @@ aws ec2 delete-network-insights-path --network-insights-path-id nip-xxxxx
 
 ---
 
-## 15. Load Balancer (Ingress VPC)
+## 16. Load Balancer (Ingress VPC)
 
 ### Describe ALB
 ```bash
@@ -543,7 +567,7 @@ aws elbv2 describe-rules \
 
 ---
 
-## 16. CloudTrail - Network Change Investigation
+## 17. CloudTrail - Network Change Investigation
 
 ### Find who modified a Security Group
 ```bash
@@ -632,7 +656,7 @@ VPC Endpoints:       CreateVpcEndpoint, DeleteVpcEndpoints, ModifyVpcEndpoint
 
 ---
 
-## 17. CloudWatch Network Metrics
+## 18. CloudWatch Network Metrics
 
 ### NAT Gateway Metrics
 ```bash
@@ -700,7 +724,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/NetworkFirewall \
   --metric-name DroppedPackets \
-  --dimensions Name=FirewallName,Value=maybank-lab-network-firewall Name=AvailabilityZone,Value=ap-southeast-3a \
+  --dimensions Name=FirewallName,Value=<firewall-name> Name=AvailabilityZone,Value=<availability-zone> \
   --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 --statistics Sum
@@ -709,7 +733,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/NetworkFirewall \
   --metric-name PassedPackets \
-  --dimensions Name=FirewallName,Value=maybank-lab-network-firewall \
+  --dimensions Name=FirewallName,Value=<firewall-name> \
   --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 --statistics Sum
@@ -718,7 +742,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/NetworkFirewall \
   --metric-name StreamExceptionPolicyPackets \
-  --dimensions Name=FirewallName,Value=maybank-lab-network-firewall \
+  --dimensions Name=FirewallName,Value=<firewall-name> \
   --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 --statistics Sum
@@ -784,7 +808,7 @@ aws cloudwatch describe-alarms \
 
 ---
 
-## 18. Useful Compound Commands
+## 19. Useful Compound Commands
 
 ### Full path trace (source to destination)
 ```bash

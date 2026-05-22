@@ -40,7 +40,7 @@ Delete the examples and replace with your actual exceptions.
 | vpc-isolated-001 | No internet access (no NAT GW, no IGW) | Air-gapped compliance requirement | SEC-2024-001 | Permanent |
 | sg-legacy-app-sg | Allows 0.0.0.0/0:22 inbound | Legacy app requires SSH from anywhere, migration planned | NET-1234 | 2026-12-31 |
 | tgw-rtb-spoke: 172.30.0.0/16 | Blackhole route | Decommissioned DC, pending route cleanup | CHG-5678 | 2026-07-01 |
-| maybank-lab-stateful-rules | Allows all TCP 10.0.0.0/8 → 10.0.0.0/8 | Lab environment, broad rules for testing | LAB-001 | Permanent |
+| <your-rule-group> | Allows all TCP 10.0.0.0/8 → 10.0.0.0/8 | Lab environment, broad rules for testing | LAB-001 | Permanent |
 | vpce-svc-xxxxx | PrivateLink endpoint pending acceptance | Waiting for provider team approval | SVC-9012 | 2026-06-15 |
 | nat-gw-az-b | ErrorPortAllocation > 0 occasionally | Known high-connection workload, additional NAT planned | OPS-3456 | 2026-08-01 |
 | fw-policy-id-42 | Allows all from 10.5.0.0/16 | Temporary migration rule | MIG-7890 | 2026-06-30 |

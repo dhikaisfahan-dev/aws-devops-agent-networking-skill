@@ -51,33 +51,27 @@ aws ec2 search-transit-gateway-routes \
 
 **Expected:** 0.0.0.0/0 → Inspection VPC attachment
 
-### Step 4: Check Network Firewall (Domain Filtering)
+### Step 4: Check Firewall (GWLB + 3rd Party Appliance)
 
 ```bash
-# Check if traffic is being blocked
-aws logs filter-log-events \
-  --log-group-name /aws/network-firewall/alert \
-  --filter-pattern '{ $.event.src_ip = "SOURCE_IP" }' \
-  --start-time $(date -u -v-30M +%s000)
+# Check GWLB target health
+aws elbv2 describe-target-health \
+  --target-group-arn <gwlb-target-group-arn> \
+  --query 'TargetHealthDescriptions[].{Target:Target.Id,Health:TargetHealth.State}'
 
-# Check domain allowlist rule group
-aws network-firewall describe-rule-group \
-  --rule-group-name domain-allowlist \
-  --type STATEFUL \
-  --query 'RuleGroup.RulesSource.RulesSourceList.{Targets:Targets,TargetTypes:TargetTypes,Action:GeneratedRulesType}'
+# If FortiAnalyzer MCP available — check if outbound traffic was blocked:
+# → FortiAnalyzer MCP: search_traffic_logs
+#   Filter: srcip=SOURCE_IP dstport=443
+#   Look for: action=deny → firewall blocking outbound
+
+# If FortiGate MCP available — check egress policies:
+# → FortiGate MCP: list_firewall_policies
+#   Look for policies with dstintf=wan/internet and action=deny
+
+# If no MCP — escalate to firewall team:
+# "Traffic passes GWLB (targets healthy) but doesn't reach internet.
+#  Please check firewall egress/domain filtering rules for SOURCE_IP."
 ```
-
-**If domain is blocked:** Add to allowlist:
-```bash
-# Get current rule group
-aws network-firewall describe-rule-group \
-  --rule-group-name domain-allowlist \
-  --type STATEFUL
-
-# Update with new domain (must include all existing + new)
-aws network-firewall update-rule-group \
-  --rule-group-name domain-allowlist \
-  --type STATEFUL \
   --rules-source '{
     "RulesSourceList": {
       "Targets": [".existing-domain.com", ".new-domain.com"],

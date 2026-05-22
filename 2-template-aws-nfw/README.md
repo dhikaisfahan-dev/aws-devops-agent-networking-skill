@@ -35,7 +35,7 @@ cd my-skill/ && zip -r my-skill.zip SKILL.md KNOWN-EXCEPTIONS.md references/
 | `references/runbooks/` | 13 operational runbooks |
 | `references/troubleshooting-guide.md` | Decision trees, VPC/TGW/Firewall/CloudTrail/CloudWatch log queries |
 | `references/best-practices.md` | Design principles for SG, RT, TGW, Firewall, Endpoints |
-| `references/cli-reference.md` | AWS CLI commands (18 sections) |
+| `references/cli-reference.md` | AWS CLI commands (19 sections) |
 
 ## Runbooks (13)
 

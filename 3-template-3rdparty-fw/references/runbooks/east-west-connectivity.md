@@ -127,37 +127,30 @@ aws ec2 describe-route-tables \
 
 **Common Issue:** Route pointing to firewall endpoint in wrong AZ.
 
-### Step 6: Check AWS Network Firewall
+### Step 6: Check Firewall (GWLB + 3rd Party Appliance)
 
 ```bash
-# Check firewall status
-aws network-firewall describe-firewall \
-  --firewall-name maybank-inspection-fw \
-  --query 'FirewallStatus.{Status:Status,SyncStates:SyncStates}'
+# Check GWLB target health (are firewall appliances healthy?)
+aws elbv2 describe-target-health \
+  --target-group-arn <gwlb-target-group-arn> \
+  --query 'TargetHealthDescriptions[].{Target:Target.Id,Health:TargetHealth.State,Reason:TargetHealth.Reason}'
 
-# Check alert logs for this traffic
+# If FortiAnalyzer MCP available — check if traffic was blocked:
+# → FortiAnalyzer MCP: search_traffic_logs
+#   Filter: srcip=SOURCE_IP dstip=DEST_IP
+#   Look for: action=deny → firewall blocked it
+
+# If FortiGate MCP available — check which policy applies:
+# → FortiGate MCP: list_firewall_policies
+#   Look for policy matching src/dst/port with action=deny
+
+# If no MCP available — check VPC Flow Logs on GWLB appliance ENI:
 aws logs filter-log-events \
-  --log-group-name /aws/network-firewall/alert \
-  --filter-pattern '{ $.event.src_ip = "SOURCE_IP" && $.event.dest_ip = "DEST_IP" }' \
-  --start-time $(date -u -v-1H +%s000) \
-  --query 'events[].message'
-
-# Check flow logs
-aws logs filter-log-events \
-  --log-group-name /aws/network-firewall/flow \
-  --filter-pattern '{ $.event.src_ip = "SOURCE_IP" && $.event.dest_ip = "DEST_IP" }' \
-  --start-time $(date -u -v-1H +%s000)
+  --log-group-name /vpc/flow-logs/<inspection-vpc> \
+  --filter-pattern '{ $.srcAddr = "SOURCE_IP" && $.dstAddr = "DEST_IP" }'
+# If traffic appears entering appliance but not exiting → firewall dropped it
+# Escalate to firewall team with: src IP, dst IP, port, timestamp
 ```
-
-**If DROP found:** Check stateful rules:
-```bash
-aws network-firewall describe-rule-group \
-  --rule-group-name east-west-rules \
-  --type STATEFUL \
-  --query 'RuleGroup.RulesSource'
-```
-
-**Fix:** Add allow rule:
 ```bash
 # For Suricata-compatible rules
 # pass tcp 10.0.0.0/16 any -> 10.1.0.0/16 PORT (msg:"Allow WL1 to WL2"; sid:1000001; rev:1;)

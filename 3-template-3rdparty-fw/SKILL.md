@@ -153,33 +153,38 @@ DNS:
 - `search_traffic_logs` — Search firewall traffic logs by source/dest IP, port, action
 - `search_security_logs` — Search IPS/AV/web filter logs
 - `get_alerts` — Get security alerts (blocked traffic, threats)
-- `get_alert_details` — Get detailed alert with rule info
-- `query_logs` — Custom log query with filters
+- `search_event_logs` — Search system event logs (VPN, HA, admin actions)
 - `get_log_stats` — Log statistics (volume, top talkers)
 - `get_top_sources` / `get_top_destinations` — FortiView analytics
 - `get_top_threats` — Top detected threats
 - `get_incidents` — List security incidents
 - `list_devices` — List managed devices and their status
-- `get_pcap_file` — Download packet capture for an event
+- `get_system_status` — FortiAnalyzer system info
 
 ### FortiManager MCP (Policy Layer)
-- `search` — Search API spec for firewall objects, policies, addresses
-- `execute` — Run FortiManager API calls (read policies, objects, device status)
-  - Get policy packages: `fortimanager.request('get', [{url: '/pm/pkg/adom/root'}])`
-  - Get firewall policies: `fortimanager.request('get', [{url: '/pm/config/adom/root/pkg/<pkg>/firewall/policy'}])`
-  - Get address objects: `fortimanager.request('get', [{url: '/pm/config/adom/root/obj/firewall/address'}])`
-  - Get device status: `fortimanager.request('get', [{url: '/dvmdb/device'}])`
+- `health_check` — Check if FortiManager is online
+- `get_system_status` — FortiManager system info and version
+- `list_adoms` — List Administrative Domains
+- `list_devices` — List managed FortiGate devices with connection status
+- `get_device_status` — Get specific device detail
+- `list_policy_packages` — List policy packages in an ADOM
+- `get_firewall_policies` — Get all policies in a package (src, dst, service, action)
+- `get_firewall_policy_detail` — Get single policy detail by ID
+- `list_address_objects` — List address objects (subnets, FQDNs)
+- `list_service_objects` — List service objects (TCP/UDP ports)
 
 ### FortiGate MCP (Direct Appliance Layer)
-- `get_device_status` — Check if firewall is online/healthy
+- `list_devices` — List all registered FortiGate devices
+- `health_check` — Check if firewall is online/healthy
+- `get_system_status` — Firmware, hostname, serial, uptime
 - `list_firewall_policies` — List all policies on the device
-- `get_firewall_policy_detail` — Get policy with resolved address/service objects
+- `get_firewall_policy` — Get policy detail by ID with resolved objects
 - `list_address_objects` — List address objects
 - `list_service_objects` — List service objects
 - `get_routing_table` — Get active routing table
 - `list_interfaces` — List interfaces and status
 - `list_static_routes` — List configured routes
-- `health_check` — Server and device connectivity status
+- `get_ha_status` — HA cluster status
 
 ---
 
@@ -292,23 +297,24 @@ Goal: Determine why the firewall appliance is unhealthy.
 Goal: Find the exact rule that's blocking traffic and recommend a fix.
 
 4.1 Get policy details from FortiManager
-    → FortiManager MCP: execute
-      Code: fortimanager.request('get', [{url: '/pm/config/adom/root/pkg/<pkg>/firewall/policy/<policy-id>'}])
+    → FortiManager MCP: get_firewall_policy_detail
+      Parameters: package=<pkg-name>, policy_id=<id>, adom=root
     
     Shows: source/destination addresses, services, action, schedule
 
 4.2 OR get policy from FortiGate directly
-    → FortiGate MCP: get_firewall_policy_detail
-      Parameters: device=<device-name>, policy_id=<id>
+    → FortiGate MCP: get_firewall_policy
+      Parameters: policy_id=<id>, device=<device-name>
     
     Shows: resolved address objects, service objects, action
 
 4.3 Check address objects referenced in the policy
-    → FortiManager MCP: execute
-      Code: fortimanager.request('get', [{url: '/pm/config/adom/root/obj/firewall/address/<object-name>'}])
+    → FortiManager MCP: list_address_objects
+      Parameters: adom=root
     
     OR
     → FortiGate MCP: list_address_objects
+      Parameters: device=<device-name>
 
 4.4 Determine root cause:
     - Source IP not in the source address object → Add to address group
@@ -381,9 +387,8 @@ Goal: Check if a recent change caused the issue.
    → call_aws: aws elbv2 describe-target-health (GWLB targets)
    → Result: Shows healthy/unhealthy per target
 
-2. FortiManager Level:
-   → FortiManager MCP: execute
-     Code: fortimanager.request('get', [{url: '/dvmdb/device'}])
+3. FortiManager Level:
+   → FortiManager MCP: list_devices
    → Result: Shows connection_status per device (up/down/unknown)
 
 3. FortiAnalyzer Level:
@@ -609,16 +614,15 @@ Step 6: CloudWatch TGW Connect metrics
 
 ```
 IF FortiManager MCP available:
-  → FortiManager MCP: execute
-    Code: fortimanager.request('get', [{url: '/pm/config/adom/root/obj/dynamic/virtual-wan-link/members'}])
-    Shows: SD-WAN member interfaces, status, SLA targets
+  → FortiManager MCP: list_devices
+    Shows: SD-WAN appliance connection status
   
-  → FortiManager MCP: execute
-    Code: fortimanager.request('get', [{url: '/pm/config/adom/root/obj/dynamic/virtual-wan-link/health-check'}])
-    Shows: SLA probe results, latency, jitter, packet loss per link
+  → FortiManager MCP: get_firewall_policies
+    Parameters: package=<sdwan-pkg>, adom=root
+    Shows: SD-WAN policies and routing rules
 
 IF FortiGate MCP available:
-  → FortiGate MCP: get_device_status
+  → FortiGate MCP: get_system_status
     Shows: SD-WAN appliance overall health
   
   → FortiGate MCP: list_interfaces
@@ -635,8 +639,7 @@ IF FortiAnalyzer MCP available:
     Shows: Traffic flowing through SD-WAN links
   
   → FortiAnalyzer MCP: get_alerts
-    Filter: SD-WAN related alerts (link failover, SLA violation)
-    Shows: When and why SD-WAN path changed
+    Shows: SD-WAN related alerts (link failover, SLA violation)
 ```
 
 ### Other SD-WAN Brands (Cisco, Palo Alto, VMware VeloCloud, Aruba)
